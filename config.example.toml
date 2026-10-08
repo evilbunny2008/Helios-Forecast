@@ -1,0 +1,72 @@
+# Helios Forecast, standalone. Copy to config.toml and edit.
+# Run: python -m helios_standalone -c config.toml   (then open http://localhost:8099/)
+
+# Where the history cache, the persisted state and the output files live (relative to this file).
+data_dir = "data"
+
+[site]
+name = "Home"
+latitude = -33.8566
+longitude = 151.2152
+timezone = "Australia/Sydney"
+# The inverter's AC limit in kW. Leave out for no clipping.
+inverter_max_kw = 5.0
+# Local hour at which today's forecast is frozen as the reference for the "trend" figure.
+trend_anchor_hour = 6
+
+# One section per panel line. Azimuth is degrees from north: 0 = north, 90 = east, 180 = south, 270 = west.
+# Tilt is degrees from horizontal. tracker: "none", "single-axis-h", "single-axis-v" or "dual-axis".
+[[arrays]]
+tilt = 20
+azimuth = 0
+kwp = 6.6
+# Optional: a cap for this line alone (micro-inverters), and its own coordinates.
+# inverter_max_kw = 3.0
+
+# [[arrays]]
+# tilt = 20
+# azimuth = 270
+# kwp = 3.3
+
+[source]
+# Where the measured production comes from, so the forecast can learn from your panels:
+#   "foxess"  FoxESS Cloud Open API (set [foxess] below)
+#   "csv"     hourly files (set [csv] below)
+#   "none"    no learning, the physical model alone
+type = "foxess"
+
+[foxess]
+# Generate a key at foxesscloud.com: User Profile > API Management.
+api_key = ""
+# Only needed when the account has more than one inverter.
+device_sn = ""
+# PVEnergyTotal is the panels' DC yield. "generation" is the inverter's AC output, which on a hybrid
+# includes battery discharge; use it only on an inverter without a battery.
+# For an AC-coupled array measured by a CT clamp, run a second instance with its own config, its own
+# [[arrays]], data_dir and port, and production_variable = "meterPower2" (the clamp's power, read
+# from the 5-minute samples). See STANDALONE.md, "AC-coupled arrays".
+production_variable = "PVEnergyTotal"
+# Only for a power variable such as meterPower2: set true when the clamp reads production as negative
+# (the check command tells you).
+# production_invert = false
+# The house load, for the battery projection.
+consumption_variable = "loads"
+
+# [csv]
+# production = "production.csv"     # rows: 2026-10-08T10:00:00+11:00,1.234  (hour start, kWh)
+# consumption = "consumption.csv"   # optional, same format
+
+# Optional battery state-of-charge projection (foxess source only). Leave capacity_kwh out to turn it off.
+[battery]
+# capacity_kwh = 10.4
+# max_charge_kw = 5.0
+# max_discharge_kw = 5.0
+# min_soc = 10
+# efficiency = 90
+
+[web]
+host = "0.0.0.0"
+port = 8099
+
+[schedule]
+refresh_minutes = 30
