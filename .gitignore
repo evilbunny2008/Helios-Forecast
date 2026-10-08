@@ -8,3 +8,7 @@ __pycache__/
 .coverage
 htmlcov/
 .DS_Store
+
+# Standalone runner: local configuration (holds the FoxESS key) and its data.
+/config.toml
+/data/

@@ -309,6 +309,7 @@ documented and frozen, so a change on either side cannot silently break the othe
 | :-- | :-- |
 | [CONTRACT.md](CONTRACT.md) | The data contract between the integration and the card |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, release by release |
+| [STANDALONE.md](STANDALONE.md) | Running the same forecast without Home Assistant, with a web UI (FoxESS or CSV history) |
 | [helios-ha.org](https://helios-ha.org/helios-forecast/) | The full entity list and how it all fits together |
 
 Requires Home Assistant **2025.11.0** or later: the archive writes its own long-term statistics series, whose metadata carries a unit class the recorder only stores from that release.
