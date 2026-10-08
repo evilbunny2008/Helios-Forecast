@@ -28,6 +28,16 @@ _RATE_LIMITED = {40400, 41200, 41201, 41202, 41203}
 _RATE_LIMIT_BACKOFF_S = 30.0
 # A per-hour energy above this is a corrupted counter, not a reading (no residential string makes it).
 _IMPLAUSIBLE_KWH = 1000.0
+# The energy variables the hourly report answers. Any other production variable is a power reading
+# (kW, such as meterPower2 for a CT clamp on an AC-coupled array) and is integrated from the samples.
+REPORT_VARIABLES = frozenset(
+    {"generation", "feedin", "loads", "gridConsumption", "chargeEnergyToTal", "dischargeEnergyToTal", "PVEnergyTotal"}
+)
+# A sample stands for the time up to the next one, but never longer than this: across a gap in the
+# data it would otherwise spread one reading over the whole gap.
+_MAX_SAMPLE_SPAN = timedelta(minutes=15)
+# An hour whose samples cover less than this is left out, not counted as low production.
+_MIN_HOUR_COVERAGE = 0.75
 _HISTORY_TIME = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:.*?([+-])(\d{2}):?(\d{2}))?\s*$")
 
 
@@ -59,6 +69,30 @@ def parse_history_time(value: str, tz: tzinfo) -> Optional[datetime]:
         offset = timedelta(hours=int(match.group(3)), minutes=int(match.group(4))) * sign
         return naive.replace(tzinfo=timezone(offset))
     return naive.replace(tzinfo=tz)
+
+
+def hourly_energy(samples: Sequence[Tuple[datetime, float]], day_start: datetime, hours: int) -> List[Optional[float]]:
+    """Integrate power samples (kW) into energy (kWh) per hour from day_start, signed as measured.
+
+    Each sample holds until the next one, up to _MAX_SAMPLE_SPAN; an hour the samples cover less
+    than _MIN_HOUR_COVERAGE of is None, since a gap in the data is not an hour without sun."""
+    ordered = sorted(samples)
+    energy = [0.0] * hours
+    covered = [0.0] * hours
+    start = day_start.astimezone(timezone.utc)
+    for i, (t, kw) in enumerate(ordered):
+        nxt = ordered[i + 1][0] if i + 1 < len(ordered) else t + timedelta(minutes=5)
+        a, b = t.astimezone(timezone.utc), min(nxt, t + _MAX_SAMPLE_SPAN).astimezone(timezone.utc)
+        while a < b:
+            index = int((a - start).total_seconds() // 3600)
+            hour_end = start + timedelta(hours=index + 1)
+            seg_end = min(b, hour_end)
+            if 0 <= index < hours:
+                span_h = (seg_end - a).total_seconds() / 3600.0
+                energy[index] += kw * span_h
+                covered[index] += span_h
+            a = seg_end
+    return [round(e, 4) if c >= _MIN_HOUR_COVERAGE else None for e, c in zip(energy, covered)]
 
 
 def clean_energy(value: Any) -> Optional[float]:

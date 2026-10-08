@@ -49,6 +49,9 @@ class FoxessSettings:
     # strings; "generation" is the inverter's AC output, which on a hybrid includes battery discharge
     # and would teach the model that the roof produces at night.
     production_variable: str = "PVEnergyTotal"
+    # Flip the sign of a power variable read from samples (a CT clamp fitted the other way round
+    # reads production as negative). Ignored for the report's energy variables, which are unsigned.
+    production_invert: bool = False
     # Report variable read as the house's hourly consumption, for the battery projection.
     consumption_variable: str = "loads"
     # Minimum seconds between two calls: the Open API refuses bursts.
@@ -155,6 +158,7 @@ def parse_settings(raw: Dict[str, Any], base_dir: Path) -> Settings:
             api_key=api_key,
             device_sn=str(section.get("device_sn") or "").strip(),
             production_variable=str(section.get("production_variable") or "PVEnergyTotal"),
+            production_invert=bool(section.get("production_invert", False)),
             consumption_variable=str(section.get("consumption_variable") or "loads"),
             min_interval_s=_float(section, "min_interval_s", "foxess") or 2.0,
         )

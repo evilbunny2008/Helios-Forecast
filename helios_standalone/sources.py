@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 
 from custom_components.helios_forecast.solar.residual import ProductionBucket
 
-from .foxess import FoxessClient, FoxessError
+from .foxess import REPORT_VARIABLES, FoxessClient, FoxessError, hourly_energy
 from .settings import CsvSettings, FoxessSettings
 
 _LOGGER = logging.getLogger(__name__)
@@ -187,7 +187,7 @@ class FoxessSource(Source):
                 calls += 1
                 try:
                     if kind == "report":
-                        values = await self._client.report_day(day, report_vars)
+                        values = await self._fetch_day(day, report_vars)
                         payload = {"fetched_at": datetime.now(self._tz).isoformat(), "vars": values}
                         self._reports[day] = payload
                     else:
@@ -214,6 +214,25 @@ class FoxessSource(Source):
         if errors:
             _LOGGER.warning("FoxESS sync: %s%s", errors[0], f" (and {len(errors) - 1} more)" if len(errors) > 1 else "")
 
+    def _day_bounds(self, day: date) -> tuple[datetime, datetime]:
+        begin = datetime(day.year, day.month, day.day, tzinfo=self._tz)
+        return begin, datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=self._tz)
+
+    async def _fetch_day(self, day: date, variables: List[str]) -> Dict[str, List[Optional[float]]]:
+        """One local day's hourly energy per variable: from the report for the energy variables, and
+        integrated from the samples for a power variable (kWh signed as measured; the sign is applied
+        on read, so changing production_invert needs no refetch)."""
+        report = [v for v in variables if v in REPORT_VARIABLES]
+        power = [v for v in variables if v not in REPORT_VARIABLES]
+        values = await self._client.report_day(day, report) if report else {}
+        if power:
+            begin, end = self._day_bounds(day)
+            hours = int((end - begin).total_seconds() // 3600)
+            samples = await self._client.history(begin, end - timedelta(seconds=1), power, self._tz)
+            for v in power:
+                values[v] = hourly_energy(samples.get(v) or [], begin, hours)
+        return values
+
     async def _fetch_soc(self, day: date) -> Dict:
         begin = datetime(day.year, day.month, day.day, tzinfo=self._tz)
         end = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=self._tz) - timedelta(seconds=1)
@@ -229,10 +248,14 @@ class FoxessSource(Source):
     def _buckets(self, var: str, start: datetime, end: datetime) -> Optional[List[ProductionBucket]]:
         if not self._reports:
             return None
+        sign = -1.0 if (self._settings.production_invert and var not in REPORT_VARIABLES) else 1.0
         out: List[ProductionBucket] = []
         for day in sorted(self._reports):
             values = self._reports[day].get("vars", {}).get(var)
             if values:
+                if var not in REPORT_VARIABLES:
+                    # A CT reads a little either way at night; production is never below zero.
+                    values = [max(0.0, sign * v) if v is not None else None for v in values]
                 out.extend(_hour_buckets(day, self._tz, values, start, end))
         return out
 

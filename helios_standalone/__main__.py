@@ -19,7 +19,7 @@ from aiohttp import ClientSession, ClientTimeout, web
 from custom_components.helios_forecast.config import layout_from_config
 
 from .engine import Engine
-from .foxess import FoxessClient, FoxessError
+from .foxess import REPORT_VARIABLES, FoxessClient, FoxessError, hourly_energy
 from .settings import FoxessSettings, Settings, SettingsError, load_settings
 from .sources import CsvSource, FoxessSource, Source
 from .web import make_app, write_outputs
@@ -136,14 +136,30 @@ async def check(settings: Settings) -> int:
     if fox is not None:
         async with ClientSession(timeout=ClientTimeout(total=60)) as session:
             client = _foxess_client(settings, fox, session)
+            var = fox.production_variable
+            now = datetime.now(settings.tz)
+            midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
             try:
                 sn = await client.device_sn()
-                values = await client.report_day(datetime.now(settings.tz).date(), [fox.production_variable])
+                if var in REPORT_VARIABLES:
+                    today = (await client.report_day(now.date(), [var])).get(var) or []
+                else:
+                    samples = (await client.history(midnight, now, [var], settings.tz)).get(var) or []
+                    if not samples:
+                        print(f"FoxESS: inverter {sn} returned no '{var}' samples today; check the variable name")
+                        return 1
+                    today = hourly_energy(samples, midnight, 24)
             except FoxessError as err:
                 print(f"FoxESS: {err}")
                 return 1
-            today = values.get(fox.production_variable) or []
-            print(f"FoxESS: inverter {sn}, today so far {sum(v or 0 for v in today):.2f} kWh")
+            total = sum(v or 0 for v in today)
+            if var not in REPORT_VARIABLES and fox.production_invert:
+                total = -total
+            print(f"FoxESS: inverter {sn}, {var} today so far {total:.2f} kWh")
+            if var not in REPORT_VARIABLES and total < -0.05:
+                print(
+                    "  That is negative: the clamp reads production the other way round. Set production_invert = true."
+                )
     return 0
 
 
