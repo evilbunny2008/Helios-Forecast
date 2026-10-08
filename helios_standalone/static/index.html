@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helios Forecast</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='4' fill='%23e0a106'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --wash: rgba(11, 11, 11, 0.04);
+  --accent: #e0a106;
+  --s1: #2a78d6;   /* forecast */
+  --s2: #eb6834;   /* model before learning */
+  --s3: #1baf7a;   /* measured */
+  --s1-band: rgba(42, 120, 214, 0.12);
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --good-text: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --wash: rgba(255, 255, 255, 0.05);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s1-band: rgba(57, 135, 229, 0.16);
+    --good-text: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --wash: rgba(255, 255, 255, 0.05);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s1-band: rgba(57, 135, 229, 0.16);
+  --good-text: #0ca30c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1120px; margin: 0 auto; padding: 16px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 0 16px; }
+header h1 { font-size: 18px; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+header h1::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+header .meta { color: var(--ink-2); flex: 1 1 auto; }
+button {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+button:hover { background: var(--wash); }
+button[aria-pressed="true"] { border-color: var(--ink-2); font-weight: 600; }
+button:disabled { opacity: .5; cursor: progress; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; margin-bottom: 16px;
+}
+.card h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+.card .sub { color: var(--ink-2); margin: 0 0 12px; }
+.hero { display: grid; grid-template-columns: minmax(220px, 1fr) 3fr; gap: 16px; }
+@media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }
+.hero .label { color: var(--ink-2); }
+.hero .big { font-size: 52px; font-weight: 600; line-height: 1.1; margin: 4px 0; }
+.hero .big small { font-size: 20px; font-weight: 500; color: var(--ink-2); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.tile .label { color: var(--ink-2); font-size: 13px; }
+.tile .value { font-size: 22px; font-weight: 600; }
+.tile .note { color: var(--muted); font-size: 12px; }
+.meter { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 6px; overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--s1); border-radius: 3px; }
+.up { color: var(--good-text); }
+.problems { list-style: none; margin: 0; padding: 0; }
+.problems li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--grid); }
+.problems li:first-child { border-top: 0; }
+.problems .icon { flex: none; width: 20px; height: 20px; border-radius: 50%; color: #fff; font-weight: 700;
+  display: grid; place-items: center; font-size: 13px; }
+.problems .error .icon { background: var(--critical); }
+.problems .warning .icon { background: var(--warning); color: #0b0b0b; }
+.problems .sev { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+.problems p { margin: 2px 0 0; color: var(--ink-2); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; align-items: center; }
+.filters .spacer { flex: 1; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart.loading { opacity: .5; transition: opacity .15s; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 8px; color: var(--ink-2); font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-line { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+.key-rect { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.tooltip {
+  position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.12); font-size: 13px;
+  min-width: 170px; z-index: 2; display: none;
+}
+.tooltip .when { color: var(--ink-2); margin-bottom: 4px; }
+.tooltip .row { display: flex; align-items: center; gap: 8px; }
+.tooltip .row b { font-weight: 600; min-width: 64px; font-variant-numeric: tabular-nums; }
+.tooltip .row span:last-child { color: var(--ink-2); }
+.axis text, .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.cap-label { fill: var(--ink-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 500; }
+.table-wrap { max-height: 360px; overflow: auto; margin-top: 8px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+footer { color: var(--muted); font-size: 12px; }
+footer a { color: var(--ink-2); }
+.notice { color: var(--ink-2); padding: 48px 0; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="site-name">Helios Forecast</h1>
+    <div class="meta" id="meta">Loading…</div>
+    <button id="refresh" type="button">Refresh now</button>
+  </header>
+
+  <div id="waiting" class="notice" hidden></div>
+
+  <div id="content" hidden>
+    <section class="card hero" aria-label="Today">
+      <div>
+        <div class="label">Forecast for today</div>
+        <div class="big" id="today-kwh">–</div>
+        <div class="sub" id="today-note"></div>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section class="card" id="problems-card" hidden>
+      <h2>Check-up</h2>
+      <ul class="problems" id="problems"></ul>
+    </section>
+
+    <div class="filters" role="group" aria-label="Time range">
+      <button type="button" data-range="last7">Last 7 days</button>
+      <button type="button" data-range="yesterday">Yesterday</button>
+      <button type="button" data-range="today">Today</button>
+      <button type="button" data-range="tomorrow">Tomorrow</button>
+      <button type="button" data-range="next7">Next 7 days</button>
+      <span class="spacer"></span>
+      <button type="button" id="table-toggle" aria-pressed="false">Show table</button>
+    </div>
+
+    <section class="card">
+      <h2>Solar power</h2>
+      <p class="sub" id="power-sub">Forecast and measured production, in the site's time zone.</p>
+      <div class="legend" id="power-legend"></div>
+      <div class="chart" id="power-chart"></div>
+      <div class="table-wrap" id="power-table" hidden></div>
+    </section>
+
+    <section class="card" id="battery-card" hidden>
+      <h2>Battery state of charge, projected</h2>
+      <p class="sub">From the forecast against the house's usual consumption for each weekday and hour.</p>
+      <div class="chart" id="battery-chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Next 7 days</h2>
+      <p class="sub">Forecast energy per day.</p>
+      <div class="chart" id="days-chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Forecast against measured</h2>
+      <p class="sub" id="compare-sub">Daily energy over the learning window.</p>
+      <div class="legend" id="compare-legend"></div>
+      <div class="chart" id="compare-chart"></div>
+      <div class="table-wrap" id="compare-table" hidden></div>
+    </section>
+
+    <footer>
+      JSON: <a href="api/summary">summary</a> · <a href="api/series">series</a> · <a href="api/daily">daily</a> ·
+      <a href="api/solcast.json">Solcast format</a> · <a href="health">health</a>
+    </footer>
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+let summary = null;
+let range = "today";
+let showTable = false;
+let tz = undefined;
+
+function el(tag, attrs = {}, text) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function svgEl(tag, attrs = {}) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  return n;
+}
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// --- formatting ------------------------------------------------------------------------------
+function fmtW(w) {
+  if (w === null || w === undefined) return "–";
+  return Math.abs(w) >= 1000 ? (w / 1000).toFixed(2) + " kW" : Math.round(w) + " W";
+}
+function fmtKwh(k, digits = 1) { return k === null || k === undefined ? "–" : k.toFixed(digits) + " kWh"; }
+function fmtTime(iso) { return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", timeZone: tz }).format(new Date(iso)); }
+function fmtDayTime(iso) {
+  return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: tz }).format(new Date(iso));
+}
+function fmtDate(isoDate, opts = { weekday: "short", day: "numeric", month: "short" }) {
+  // An ISO calendar date, read at noon UTC so no time zone moves it to another day.
+  return new Intl.DateTimeFormat(undefined, { ...opts, timeZone: "UTC" }).format(new Date(isoDate + "T12:00:00Z"));
+}
+function addDays(isoDate, n) {
+  const d = new Date(isoDate + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function localHour(t) {
+  return Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: tz }).format(new Date(t)));
+}
+// A y scale whose gridlines fall on round numbers (0 / 1,000 / 2,000 ...): the tightest maximum
+// reachable with 3 to 5 intervals of a 1 / 2 / 2.5 / 5 step.
+function niceScale(v) {
+  if (!(v > 0)) return { max: 4, n: 4 };
+  let best = null;
+  for (const n of [4, 5, 3]) {
+    const raw = v / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * p).find((st) => st >= raw);
+    if (!best || step * n < best.max) best = { max: step * n, n };
+  }
+  return best;
+}
+
+// --- data ------------------------------------------------------------------------------------
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(body.error || r.statusText), { status: r.status, body });
+  return body;
+}
+
+function rangeQuery() {
+  const today = summary.days[0].date;
+  switch (range) {
+    case "last7": return { day: addDays(today, -6), days: 7 };
+    case "yesterday": return { day: addDays(today, -1), days: 1 };
+    case "tomorrow": return { day: addDays(today, 1), days: 1 };
+    case "next7": return { day: today, days: 7 };
+    default: return { day: today, days: 1 };
+  }
+}
+
+// --- header, hero, tiles ---------------------------------------------------------------------
+function tile(label, value, note, meterPct) {
+  const t = el("div", { class: "tile" });
+  t.append(el("div", { class: "label" }, label));
+  const v = el("div", { class: "value" });
+  if (value instanceof Node) v.append(value); else v.textContent = value;
+  t.append(v);
+  if (meterPct !== undefined && meterPct !== null) {
+    const m = el("div", { class: "meter", role: "img", "aria-label": `${Math.round(meterPct)} out of 100` });
+    const s = el("span"); s.style.width = Math.max(0, Math.min(100, meterPct)) + "%";
+    m.append(s); t.append(m);
+  }
+  if (note) t.append(el("div", { class: "note" }, note));
+  return t;
+}
+
+function renderSummary() {
+  const s = summary;
+  tz = s.site.timezone;
+  document.title = s.site.name + " · Helios Forecast";
+  $("site-name").textContent = s.site.name;
+  const src = s.source;
+  const learnNote = s.learning ? `learning from ${s.hours_learned} hours of ${src.name}` : "physical model only (no production history)";
+  $("meta").textContent = `Updated ${fmtTime(s.refreshed_at)} · ${s.site.total_kwp} kWp · ${learnNote}` +
+    (s.weather_reused ? " · weather from the previous fetch" : "") +
+    (s.last_error ? ` · last refresh failed: ${s.last_error}` : "");
+
+  const today = s.days[0];
+  $("today-kwh").replaceChildren(document.createTextNode(today.kwh.toFixed(1) + " "), el("small", {}, "kWh"));
+  const peak = today.peak_time ? `peak ${fmtW(today.peak_w)} at ${fmtTime(today.peak_time)}` : "";
+  $("today-note").textContent = (s.learning ? `Model before learning ${fmtKwh(today.kwh_raw)} · ` : "") + peak;
+
+  const n = s.now;
+  const tiles = [];
+  const band = n.power_low_w !== null && n.power_high_w !== null ? `likely ${fmtW(n.power_low_w)} – ${fmtW(n.power_high_w)}` : "";
+  tiles.push(tile("Power now", fmtW(n.power_w), band));
+  tiles.push(tile("Rest of today", fmtKwh(n.energy_today_remaining_kwh), `next hour ${fmtKwh(n.energy_next_hour_kwh, 2)}`));
+  if (s.days[1]) tiles.push(tile("Tomorrow", fmtKwh(s.days[1].kwh), s.days[1].peak_time ? `peak ${fmtW(s.days[1].peak_w)}` : ""));
+  const r = s.reliability;
+  tiles.push(tile("Reliability", r.overall === null ? "–" : `${Math.round(r.overall)} / 100`,
+    `${r.days_learned} days learned`, r.overall));
+  const t = s.trend;
+  if (t.delta_kwh !== null) {
+    const v = el("span", { class: t.delta_kwh > 0.05 ? "up" : "" }, (t.delta_kwh > 0 ? "+" : t.delta_kwh < 0 ? "−" : "") + Math.abs(t.delta_kwh).toFixed(1) + " kWh");
+    tiles.push(tile("Today since morning", v, `vs ${fmtKwh(t.reference_kwh)} at ${fmtTime(t.reference_time)}`));
+  }
+  if (s.battery.live_soc !== null) tiles.push(tile("Battery", Math.round(s.battery.live_soc) + " %", "live", s.battery.live_soc));
+  const w = s.weather;
+  if (w.cloud_cover !== null || w.temperature !== null) {
+    tiles.push(tile("Weather now", w.temperature !== null ? w.temperature.toFixed(0) + " °C" : "–",
+      w.cloud_cover !== null ? `cloud ${Math.round(w.cloud_cover)} %` : ""));
+  }
+  $("tiles").replaceChildren(...tiles);
+
+  const probs = s.problems;
+  $("problems-card").hidden = probs.length === 0 && src.ok;
+  const items = probs.map((p) => {
+    const li = el("li", { class: p.severity });
+    li.append(el("span", { class: "icon", "aria-hidden": "true" }, "!"));
+    const body = el("div");
+    body.append(el("div", { class: "sev" }, p.severity === "error" ? "Error" : "Warning"));
+    body.append(el("strong", {}, p.title));
+    if (p.description) body.append(el("p", {}, p.description));
+    li.append(body);
+    return li;
+  });
+  if (!src.ok && src.last_error) {
+    const li = el("li", { class: "warning" });
+    li.append(el("span", { class: "icon", "aria-hidden": "true" }, "!"));
+    const body = el("div");
+    body.append(el("div", { class: "sev" }, "Warning"), el("strong", {}, `History source (${src.name})`), el("p", {}, src.last_error));
+    li.append(body);
+    items.push(li);
+  }
+  $("problems").replaceChildren(...items);
+}
+
+// --- time-series chart -----------------------------------------------------------------------
+// series: [{label, color, kind: "line"|"band"|"columns", data}] where line data is [{t, v}],
+// band data [{t, lo, hi}], column data [{t0, t1, v}]. One y scale for all of them.
+function timeChart(container, { x0, x1, series, scale, fmtY, tooltipRows, nowT, height = 280 }) {
+  const yMax = scale.max, nTicks = scale.n;
+  const width = Math.max(320, container.clientWidth);
+  const m = { l: 52, r: 12, t: 10, b: 26 };
+  const iw = width - m.l - m.r, ih = height - m.t - m.b;
+  const X = (t) => m.l + ((t - x0) / (x1 - x0)) * iw;
+  const Y = (v) => m.t + ih - (v / yMax) * ih;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": container.dataset.label || "chart" });
+
+  // grid + y ticks
+  const g = svgEl("g", { class: "axis" });
+  for (let i = 0; i <= nTicks; i++) {
+    const v = (yMax / nTicks) * i, y = Y(v);
+    g.append(svgEl("line", { x1: m.l, x2: m.l + iw, y1: y, y2: y, stroke: i === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }));
+    const tx = svgEl("text", { x: m.l - 6, y: y + 4, "text-anchor": "end" }); tx.textContent = fmtY(v); g.append(tx);
+  }
+  // x ticks: hours for a day or less, midnights otherwise
+  // Hour labels for a day or less, as sparse as the width needs; midnights otherwise.
+  const spanH = (x1 - x0) / 3600e3;
+  const pxPerH = iw / spanH;
+  const stepH = spanH <= 26 ? ([1, 2, 3, 6, 12].find((h) => h * pxPerH >= 44) || 12) : 24;
+  for (let t = Math.ceil(x0 / 3600e3) * 3600e3; t <= x1; t += 3600e3) {
+    const h = localHour(t);
+    if (h % stepH !== 0) continue;
+    const x = X(t);
+    if (stepH === 24) g.append(svgEl("line", { x1: x, x2: x, y1: m.t, y2: m.t + ih, stroke: css("--grid"), "stroke-width": 1 }));
+    const tx = svgEl("text", { x: stepH === 24 ? x + 4 : x, y: height - 8, "text-anchor": stepH === 24 ? "start" : "middle" });
+    tx.textContent = stepH === 24
+      ? new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", timeZone: tz }).format(new Date(t))
+      : fmtTime(t);
+    g.append(tx);
+  }
+  svg.append(g);
+
+  for (const s of series) {
+    if (s.kind === "columns") {
+      const gap = 2;
+      for (const d of s.data) {
+        if (d.v === null || d.t1 <= x0 || d.t0 >= x1) continue;
+        const xa = X(Math.max(d.t0, x0)), xb = X(Math.min(d.t1, x1));
+        const w = Math.max(1, xb - xa - gap), y = Y(Math.min(d.v, yMax)), h = m.t + ih - y;
+        if (h <= 0) continue;
+        const r = Math.min(4, w / 2, h);
+        svg.append(svgEl("path", {
+          d: `M${xa + gap / 2},${m.t + ih} V${y + r} q0,-${r} ${r},-${r} H${xa + gap / 2 + w - r} q${r},0 ${r},${r} V${m.t + ih} Z`,
+          fill: s.color, opacity: s.opacity || 1,
+        }));
+      }
+    } else if (s.kind === "band") {
+      let seg = [];
+      const flush = () => {
+        if (seg.length > 1) {
+          const top = seg.map((d) => `${X(d.t)},${Y(d.hi)}`), bottom = seg.slice().reverse().map((d) => `${X(d.t)},${Y(d.lo)}`);
+          svg.append(svgEl("polygon", { points: top.concat(bottom).join(" "), fill: s.color }));
+        }
+        seg = [];
+      };
+      for (const d of s.data) { if (d.lo === null || d.hi === null) flush(); else seg.push(d); }
+      flush();
+    } else {
+      let dstr = "", pen = false;
+      for (const d of s.data) {
+        if (d.v === null) { pen = false; continue; }
+        dstr += `${pen ? "L" : "M"}${X(d.t).toFixed(1)},${Y(Math.min(d.v, yMax)).toFixed(1)}`;
+        pen = true;
+      }
+      svg.append(svgEl("path", { d: dstr, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    }
+  }
+
+  if (nowT && nowT > x0 && nowT < x1) {
+    const x = X(nowT);
+    svg.append(svgEl("line", { x1: x, x2: x, y1: m.t, y2: m.t + ih, stroke: css("--ink-2"), "stroke-width": 1 }));
+    const tx = svgEl("text", { x: x + 4, y: m.t + 10, class: "tick" }); tx.textContent = "now"; svg.append(tx);
+  }
+
+  // crosshair + tooltip
+  const cross = svgEl("line", { y1: m.t, y2: m.t + ih, stroke: css("--ink-2"), "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const tip = el("div", { class: "tooltip", role: "status" });
+  const hit = svgEl("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent", tabindex: 0 });
+  const show = (t) => {
+    const rows = tooltipRows(t);
+    if (!rows) return hide();
+    const x = X(rows.t);
+    cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("visibility", "visible");
+    tip.replaceChildren(el("div", { class: "when" }, rows.when));
+    for (const r of rows.rows) {
+      const row = el("div", { class: "row" });
+      const key = el("span", { class: "key-line" }); key.style.background = r.color;
+      row.append(key, el("b", {}, r.value), el("span", {}, r.label));
+      tip.append(row);
+    }
+    tip.style.display = "block";
+    const left = x + 12 + tip.offsetWidth > width ? x - 12 - tip.offsetWidth : x + 12;
+    tip.style.left = left + "px"; tip.style.top = m.t + "px";
+  };
+  const hide = () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; };
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * width;
+    show(x0 + ((px - m.l) / iw) * (x1 - x0));
+  });
+  hit.addEventListener("pointerleave", hide);
+  hit.addEventListener("focus", () => show(nowT && nowT > x0 && nowT < x1 ? nowT : (x0 + x1) / 2));
+  hit.addEventListener("blur", hide);
+  hit.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const cur = Number(cross.getAttribute("x1")) || m.l;
+    const t = x0 + ((cur - m.l) / iw) * (x1 - x0) + (e.key === "ArrowRight" ? 1 : -1) * 3600e3;
+    show(Math.max(x0, Math.min(x1, t)));
+    e.preventDefault();
+  });
+  svg.append(hit);
+  container.replaceChildren(svg, tip);
+}
+
+function legend(container, items) {
+  container.replaceChildren(...items.map((i) => {
+    const s = el("span");
+    const k = el("span", { class: i.kind === "line" ? "key-line" : "key-rect" });
+    k.style.background = i.color;
+    s.append(k, document.createTextNode(i.label));
+    return s;
+  }));
+}
+
+function nearest(arr, t) {
+  let lo = 0, hi = arr.length - 1;
+  if (hi < 0) return null;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid].t < t) lo = mid + 1; else hi = mid; }
+  if (lo > 0 && Math.abs(arr[lo - 1].t - t) < Math.abs(arr[lo].t - t)) lo--;
+  return arr[lo];
+}
+
+async function renderPower() {
+  const chart = $("power-chart");
+  chart.classList.add("loading");
+  const q = rangeQuery();
+  let data;
+  try {
+    data = await getJSON(`api/series?day=${q.day}&days=${q.days}`);
+  } finally {
+    chart.classList.remove("loading");
+  }
+  const x0 = Date.parse(data.start), x1 = Date.parse(data.end);
+  const pts = data.points.map((p) => ({ ...p, t: Date.parse(p.t) }));
+  const actual = data.actual.map((a) => ({ t0: Date.parse(a.t), t1: Date.parse(a.t) + 3600e3, v: a.kwh * 1000, curtailed: a.curtailed }));
+  const learning = summary.learning;
+  const colors = { f: css("--s1"), band: css("--s1-band"), raw: css("--s2"), meas: css("--s3") };
+  const series = [];
+  if (actual.length) series.push({ label: "Measured (hourly average)", color: colors.meas, kind: "columns", data: actual, opacity: 0.85 });
+  if (pts.some((p) => p.pv_p10 !== null)) series.push({ label: "Likely range (P10–P90)", color: colors.band, kind: "band", data: pts.map((p) => ({ t: p.t, lo: p.pv_p10, hi: p.pv_p90 })) });
+  if (learning) series.push({ label: "Model before learning", color: colors.raw, kind: "line", data: pts.map((p) => ({ t: p.t, v: p.pv_raw_w })) });
+  series.push({ label: "Forecast", color: colors.f, kind: "line", data: pts.map((p) => ({ t: p.t, v: p.pv_w })) });
+
+  legend($("power-legend"), series.slice().reverse().map((s) => ({ label: s.label, color: s.kind === "band" ? css("--s1") : s.color, kind: s.kind === "line" ? "line" : "rect" })));
+  const peak = Math.max(1, ...pts.map((p) => Math.max(p.pv_w || 0, p.pv_raw_w || 0, p.pv_p90 || 0)), ...actual.map((a) => a.v || 0));
+  const scale = niceScale(peak * 1.05);
+  const unitKw = scale.max >= 2000;
+  timeChart(chart, {
+    x0, x1, series, scale,
+    fmtY: (v) => unitKw ? +(v / 1000).toFixed(2) + " kW" : Math.round(v) + " W",
+    nowT: Date.now(),
+    tooltipRows: (t) => {
+      const p = nearest(pts, t);
+      if (!p) return null;
+      const rows = [{ color: colors.f, value: fmtW(p.pv_w), label: "Forecast" }];
+      if (p.pv_p10 !== null) rows.push({ color: css("--s1"), value: `${fmtW(p.pv_p10)} – ${fmtW(p.pv_p90)}`, label: "Likely range" });
+      if (learning) rows.push({ color: colors.raw, value: fmtW(p.pv_raw_w), label: "Model before learning" });
+      const a = actual.find((d) => d.t0 <= p.t && p.t < d.t1);
+      if (a) rows.push({ color: colors.meas, value: fmtW(a.v), label: "Measured, hour average" + (a.curtailed ? " (held back)" : "") });
+      if (p.cloud !== null) rows.push({ color: "transparent", value: Math.round(p.cloud) + " %", label: "Cloud cover" });
+      return { t: p.t, when: q.days > 1 ? fmtDayTime(p.t) : fmtTime(p.t), rows };
+    },
+  });
+  const sub = q.days > 1 ? `${fmtDate(q.day)} – ${fmtDate(addDays(q.day, q.days - 1))}` : fmtDate(q.day, { weekday: "long", day: "numeric", month: "long" });
+  $("power-sub").textContent = `${sub}. Times in ${tz}.`;
+
+  // table view: hourly rows
+  const byHour = new Map();
+  for (const p of pts) {
+    const h = Math.floor(p.t / 3600e3) * 3600e3;
+    const e = byHour.get(h) || { f: 0, raw: 0, n: 0 };
+    e.f += p.pv_w || 0; e.raw += p.pv_raw_w || 0; e.n++;
+    byHour.set(h, e);
+  }
+  const table = el("table");
+  const head = el("tr");
+  for (const h of ["Hour", "Forecast (W)", learning ? "Model (W)" : null, actual.length ? "Measured (W)" : null].filter(Boolean)) head.append(el("th", {}, h));
+  table.append(head);
+  for (const [h, e] of byHour) {
+    const tr = el("tr");
+    tr.append(el("td", {}, q.days > 1 ? fmtDayTime(h) : fmtTime(h)), el("td", {}, Math.round(e.f / e.n)));
+    if (learning) tr.append(el("td", {}, Math.round(e.raw / e.n)));
+    if (actual.length) { const a = actual.find((d) => d.t0 === h); tr.append(el("td", {}, a ? Math.round(a.v) : "")); }
+    table.append(tr);
+  }
+  $("power-table").replaceChildren(table);
+  $("power-table").hidden = !showTable;
+
+  // battery projection, only on ranges that reach it
+  const soc = data.battery_soc.map((b) => ({ t: Date.parse(b.t), v: b.soc }));
+  $("battery-card").hidden = soc.length === 0;
+  if (soc.length) {
+    timeChart($("battery-chart"), {
+      x0, x1, scale: { max: 100, n: 4 }, height: 180, fmtY: (v) => Math.round(v) + " %", nowT: Date.now(),
+      series: [{ label: "State of charge", color: css("--s1"), kind: "line", data: soc }],
+      tooltipRows: (t) => {
+        const p = nearest(soc, t);
+        return p && { t: p.t, when: fmtDayTime(p.t), rows: [{ color: css("--s1"), value: p.v.toFixed(0) + " %", label: "State of charge" }] };
+      },
+    });
+  }
+}
+
+// --- column charts ---------------------------------------------------------------------------
+// groups: [{label, values: [{v, color, name}], tip}] ; one bar per value, grouped.
+function columnChart(container, { groups, scale, fmtY, capLabels, height = 220, xLabelEvery = 1 }) {
+  const yMax = scale.max, nTicks = scale.n;
+  const width = Math.max(320, container.clientWidth);
+  const m = { l: 52, r: 8, t: 18, b: 26 };
+  const iw = width - m.l - m.r, ih = height - m.t - m.b;
+  const Y = (v) => m.t + ih - (v / yMax) * ih;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": container.dataset.label || "chart" });
+  const g = svgEl("g", { class: "axis" });
+  for (let i = 0; i <= nTicks; i++) {
+    const v = (yMax / nTicks) * i, y = Y(v);
+    g.append(svgEl("line", { x1: m.l, x2: m.l + iw, y1: y, y2: y, stroke: i === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }));
+    const tx = svgEl("text", { x: m.l - 6, y: y + 4, "text-anchor": "end" }); tx.textContent = fmtY(v); g.append(tx);
+  }
+  svg.append(g);
+  const slot = iw / groups.length;
+  // Never let two x labels touch: skip groups until the longest label fits its share.
+  const longest = Math.max(...groups.map((g) => g.label.length));
+  xLabelEvery = Math.max(xLabelEvery, Math.ceil((longest * 6.5 + 8) / slot));
+  const tip = el("div", { class: "tooltip", role: "status" });
+  groups.forEach((grp, gi) => {
+    const n = grp.values.length;
+    const bw = Math.min(24, Math.max(2, (slot * 0.7 - (n - 1) * 2) / n));
+    const total = n * bw + (n - 1) * 2;
+    const gx = m.l + gi * slot + (slot - total) / 2;
+    const gEl = svgEl("g", { tabindex: 0 });
+    grp.values.forEach((val, vi) => {
+      if (val.v === null || val.v === undefined) return;
+      const x = gx + vi * (bw + 2), y = Y(Math.min(val.v, yMax)), h = m.t + ih - y;
+      if (h <= 0) return;
+      const r = Math.min(4, bw / 2, h);
+      gEl.append(svgEl("path", { d: `M${x},${m.t + ih} V${y + r} q0,-${r} ${r},-${r} H${x + bw - r} q${r},0 ${r},${r} V${m.t + ih} Z`, fill: val.color }));
+      if (capLabels) {
+        const tx = svgEl("text", { x: x + bw / 2, y: y - 4, "text-anchor": "middle", class: "cap-label" });
+        tx.textContent = capLabels(val); gEl.append(tx);
+      }
+    });
+    if (gi % xLabelEvery === 0) {
+      const tx = svgEl("text", { x: m.l + gi * slot + slot / 2, y: height - 8, "text-anchor": "middle", class: "tick" });
+      tx.textContent = grp.label; svg.append(tx);
+    }
+    gEl.append(svgEl("rect", { x: m.l + gi * slot, y: m.t, width: slot, height: ih, fill: "transparent" }));
+    const show = () => {
+      tip.replaceChildren(el("div", { class: "when" }, grp.tipTitle || grp.label));
+      for (const r of grp.tip) {
+        const row = el("div", { class: "row" });
+        const key = el("span", { class: "key-rect" }); key.style.background = r.color || "transparent";
+        row.append(key, el("b", {}, r.value), el("span", {}, r.label));
+        tip.append(row);
+      }
+      tip.style.display = "block";
+      const cx = m.l + gi * slot + slot / 2;
+      tip.style.left = Math.min(width - tip.offsetWidth, Math.max(0, cx - tip.offsetWidth / 2)) + "px";
+      tip.style.top = "0px";
+      gEl.style.opacity = 0.85;
+    };
+    const hide = () => { tip.style.display = "none"; gEl.style.opacity = 1; };
+    gEl.addEventListener("pointerenter", show); gEl.addEventListener("pointerleave", hide);
+    gEl.addEventListener("focus", show); gEl.addEventListener("blur", hide);
+    svg.append(gEl);
+  });
+  container.replaceChildren(svg, tip);
+}
+
+function renderDays() {
+  const days = summary.days;
+  const color = css("--s1");
+  columnChart($("days-chart"), {
+    scale: niceScale(Math.max(...days.map((d) => d.kwh || 0)) * 1.1),
+    fmtY: (v) => v.toFixed(0) + " kWh",
+    capLabels: (v) => v.v.toFixed(1),
+    groups: days.map((d, i) => ({
+      label: i === 0 ? "Today" : fmtDate(d.date, { weekday: "short", day: "numeric" }),
+      tipTitle: fmtDate(d.date, { weekday: "long", day: "numeric", month: "long" }),
+      values: [{ v: d.kwh, color }],
+      tip: [
+        { color, value: fmtKwh(d.kwh), label: "Forecast" },
+        ...(summary.learning ? [{ color: css("--s2"), value: fmtKwh(d.kwh_raw), label: "Model before learning" }] : []),
+        ...(d.peak_time ? [{ value: fmtW(d.peak_w), label: `peak at ${fmtTime(d.peak_time)}` }] : []),
+        ...(d.reliability !== null ? [{ value: Math.round(d.reliability) + " / 100", label: "Reliability" }] : []),
+      ],
+    })),
+  });
+}
+
+async function renderCompare() {
+  const data = await getJSON("api/daily");
+  const days = data.days;
+  const withMeasured = days.filter((d) => d.measured_kwh !== null);
+  const chart = $("compare-chart");
+  if (!withMeasured.length) {
+    $("compare-legend").replaceChildren();
+    chart.replaceChildren(el("div", { class: "empty" }, "No measured production yet. Set a history source in the configuration to see how the forecast compares."));
+    $("compare-table").replaceChildren();
+    $("compare-sub").textContent = "Daily energy over the learning window.";
+    return;
+  }
+  const cf = css("--s1"), cm = css("--s3");
+  legend($("compare-legend"), [{ label: "Forecast", color: cf, kind: "rect" }, { label: "Measured", color: cm, kind: "rect" }]);
+  // Full days only for the error figure: today is still in progress.
+  const today = summary.days[0].date;
+  const full = withMeasured.filter((d) => d.date !== today && d.predicted_kwh !== null);
+  const sumM = full.reduce((a, d) => a + d.measured_kwh, 0);
+  const sumAbs = full.reduce((a, d) => a + Math.abs(d.predicted_kwh - d.measured_kwh), 0);
+  $("compare-sub").textContent = full.length
+    ? `Daily energy over the learning window. Over ${full.length} full days the forecast was off by ${(sumAbs / full.length).toFixed(1)} kWh a day on average (${sumM > 0 ? Math.round((sumAbs / sumM) * 100) : 0} % of measured). The past curve is the model as it stands today, refitted every hour.`
+    : "Daily energy over the learning window.";
+  const shown = days.slice(-30);
+  columnChart(chart, {
+    scale: niceScale(Math.max(...shown.map((d) => Math.max(d.predicted_kwh || 0, d.measured_kwh || 0))) * 1.05),
+    fmtY: (v) => v.toFixed(0) + " kWh",
+    groups: shown.map((d) => ({
+      label: fmtDate(d.date, { day: "numeric", month: "short" }),
+      tipTitle: fmtDate(d.date, { weekday: "long", day: "numeric", month: "long" }) + (d.date === today ? " (so far)" : ""),
+      values: [{ v: d.predicted_kwh, color: cf }, { v: d.measured_kwh, color: cm }],
+      tip: [
+        { color: cf, value: fmtKwh(d.predicted_kwh), label: "Forecast" },
+        { color: cm, value: fmtKwh(d.measured_kwh), label: "Measured" },
+      ],
+    })),
+  });
+  const table = el("table");
+  const head = el("tr");
+  for (const h of ["Day", "Forecast (kWh)", "Measured (kWh)", "Difference"]) head.append(el("th", {}, h));
+  table.append(head);
+  for (const d of days.slice().reverse()) {
+    const tr = el("tr");
+    const diff = d.predicted_kwh !== null && d.measured_kwh !== null ? (d.predicted_kwh - d.measured_kwh).toFixed(1) : "";
+    tr.append(el("td", {}, fmtDate(d.date)), el("td", {}, d.predicted_kwh ?? ""), el("td", {}, d.measured_kwh ?? ""), el("td", {}, diff));
+    table.append(tr);
+  }
+  $("compare-table").replaceChildren(table);
+  $("compare-table").hidden = !showTable;
+}
+
+// --- lifecycle -------------------------------------------------------------------------------
+function renderAll() {
+  renderSummary();
+  renderDays();
+  return Promise.all([renderPower(), renderCompare()]).catch((e) => console.error(e));
+}
+
+async function load() {
+  try {
+    const s = await getJSON("api/summary");
+    const changed = !summary || s.refreshed_at !== summary.refreshed_at;
+    summary = s;
+    $("waiting").hidden = true;
+    $("content").hidden = false;
+    if (changed) await renderAll(); else renderSummary();
+  } catch (e) {
+    if (summary) return; // keep the last render; the next poll tries again
+    $("waiting").hidden = false;
+    $("meta").textContent = "";
+    $("waiting").textContent = e.status === 503
+      ? "The first forecast is being computed. With a FoxESS source the first start fetches 60 days of history, which takes a few minutes." +
+        (e.body && e.body.last_error ? ` Last attempt failed: ${e.body.last_error}` : "")
+      : `Cannot reach the server: ${e.message}`;
+  }
+}
+
+for (const b of document.querySelectorAll("[data-range]")) {
+  b.setAttribute("aria-pressed", String(b.dataset.range === range));
+  b.addEventListener("click", () => {
+    range = b.dataset.range;
+    try { localStorage.setItem("helios.range", range); } catch (_) {}
+    for (const o of document.querySelectorAll("[data-range]")) o.setAttribute("aria-pressed", String(o === b));
+    renderPower().catch((e) => console.error(e));
+  });
+}
+try {
+  const saved = localStorage.getItem("helios.range");
+  if (saved && document.querySelector(`[data-range="${saved}"]`)) {
+    range = saved;
+    for (const o of document.querySelectorAll("[data-range]")) o.setAttribute("aria-pressed", String(o.dataset.range === range));
+  }
+} catch (_) {}
+$("table-toggle").addEventListener("click", (e) => {
+  showTable = !showTable;
+  e.currentTarget.setAttribute("aria-pressed", String(showTable));
+  e.currentTarget.textContent = showTable ? "Hide table" : "Show table";
+  $("power-table").hidden = !showTable;
+  $("compare-table").hidden = !showTable;
+});
+$("refresh").addEventListener("click", async (e) => {
+  const b = e.currentTarget;
+  b.disabled = true; b.textContent = "Refreshing…";
+  try {
+    summary = await getJSON("api/refresh", { method: "POST" });
+    $("waiting").hidden = true; $("content").hidden = false;
+    await renderAll();
+  } catch (err) {
+    alert("Refresh failed: " + err.message);
+  } finally {
+    b.disabled = false; b.textContent = "Refresh now";
+  }
+});
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => summary && renderAll(), 150); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => summary && renderAll());
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
